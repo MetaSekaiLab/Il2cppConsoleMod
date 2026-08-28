@@ -1,0 +1,4 @@
+bin/
+obj/
+*.user
+Il2cppConsoleMod.local.props

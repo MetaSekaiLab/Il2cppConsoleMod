@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Weavers xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="FodyWeavers.xsd">
+  <Costura>
+    <IncludeAssemblies>
+      Microsoft.CodeAnalysis
+      Microsoft.CodeAnalysis.CSharp
+      System.Collections.Immutable
+      System.Reflection.Metadata
+      System.Runtime.CompilerServices.Unsafe
+      System.Text.Encoding.CodePages
+    </IncludeAssemblies>
+    <CreateTemporaryAssemblies>false</CreateTemporaryAssemblies>
+    <DisableCompression>false</DisableCompression>
+    <IncludeDebugSymbols>false</IncludeDebugSymbols>
+  </Costura>
+</Weavers>
