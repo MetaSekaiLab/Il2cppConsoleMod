@@ -131,8 +131,15 @@ public sealed class HttpDebugServer : IDisposable
                                "POST /script - interactive session: raw C# statements, state persists across calls, " +
                                "a trailing expression without ';' returns its value. " +
                                "POST /script/reset - clear the interactive session. " +
+                               "GET /logcat - dump the whole BepInEx LogOutput.log as plain text. " +
                                "GET /health, GET /help.";
                     WriteJson(stream, 200, JsonSerializer.Serialize(new { help }));
+                    return;
+                }
+
+                if (request.Method == "GET" && IsPath(request.Path, "/logcat"))
+                {
+                    ServeLogcat(stream);
                     return;
                 }
 
@@ -178,6 +185,88 @@ public sealed class HttpDebugServer : IDisposable
             _log.LogError($"Il2cppConsoleMod HTTP handler error: {ex}");
         }
     }
+
+    /// <summary>True if the raw request path (ignoring any query string) equals the given route.</summary>
+    private static bool IsPath(string pathWithQuery, string route)
+    {
+        var path = pathWithQuery;
+        var q = path.IndexOf('?');
+        if (q >= 0)
+            path = path.Substring(0, q);
+        return path == route;
+    }
+
+    /// <summary>GET /logcat: streams the whole BepInEx LogOutput.log back as plain text.</summary>
+    private void ServeLogcat(NetworkStream stream)
+    {
+        var logPath = FindLogOutputPath();
+        try
+        {
+            if (!File.Exists(logPath))
+            {
+                WriteJson(stream, 404, JsonError($"LogOutput.log not found. Expected at: {logPath}"));
+                return;
+            }
+
+            // BepInEx keeps the log file open for writing, so share read/write.
+            using (var file = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                var header = "HTTP/1.1 200 OK\r\n" +
+                             "Content-Type: text/plain; charset=utf-8\r\n" +
+                             $"Content-Length: {file.Length}\r\n" +
+                             "Connection: close\r\n\r\n";
+                stream.Write(Encoding.ASCII.GetBytes(header), 0, header.Length);
+
+                var buffer = new byte[64 * 1024];
+                int read;
+                while ((read = file.Read(buffer, 0, buffer.Length)) > 0)
+                    stream.Write(buffer, 0, read);
+            }
+
+            stream.Flush();
+        }
+        catch (Exception ex)
+        {
+            _log.LogError($"Il2cppConsoleMod logcat error: {ex}");
+            try
+            {
+                WriteJson(stream, 500, JsonError($"Failed to read log file {logPath}: {ex.Message}"));
+            }
+            catch
+            {
+                // connection already broken; nothing else to do
+            }
+        }
+    }
+
+    /// <summary>
+    /// Locates the BepInEx LogOutput.log. BepInEx 6 keeps it next to the "core" folder
+    /// (or in the game root), so walk up from the plugin's base directory and look
+    /// for either a sibling of "core" or a plain LogOutput.log in any ancestor.
+    /// </summary>
+    private static string FindLogOutputPath()
+    {
+        var start = Path.GetFullPath(AppContext.BaseDirectory);
+        for (var dir = new DirectoryInfo(start); dir != null; dir = dir.Parent)
+        {
+            if (dir.Name == "core" && dir.Parent != null)
+            {
+                var sibling = Path.Combine(dir.Parent.FullName, "LogOutput.log");
+                if (File.Exists(sibling))
+                    return sibling;
+            }
+
+            var direct = Path.Combine(dir.FullName, "LogOutput.log");
+            if (File.Exists(direct))
+                return direct;
+        }
+
+        // Fall back to the expected default so the error message is still useful.
+        return Path.GetFullPath(Path.Combine(start, "..", "LogOutput.log"));
+    }
+
+    private static string JsonError(string message)
+        => "{\"error\":" + JsonSerializer.Serialize(message) + "}";
 
     private bool CheckAuth(HttpRequest request)
     {

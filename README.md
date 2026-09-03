@@ -29,6 +29,14 @@ public static class Payload { public static object Execute() => 1 + 1; }
 ```
 `GET /help` 可查看简要说明（同样需要 token）。
 
+## 读取 BepInEx 日志（/logcat）
+
+返回完整 `LogOutput.log` 原文（text/plain），同样需要 token：
+
+```
+curl -s http://127.0.0.1:18765/logcat -H "X-Debug-Token: <token>"
+```
+
 ## 交互式会话（/script）
 
 像 C# Interactive 控制台一样逐句执行，**变量跨请求持久**，无需 `class Payload` 包装：
