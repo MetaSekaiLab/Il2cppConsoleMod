@@ -27,7 +27,7 @@ payload.cs：
 ```
 public static class Payload { public static object Execute() => 1 + 1; }
 ```
-`GET /help` 可查看简要说明（同样需要 token）。
+`GET /help` 返回接口简述与**内嵌的完整 README**（markdown，编译时随 DLL 打包；同样需要 token）。
 
 ## 读取 BepInEx 日志（/logcat）
 

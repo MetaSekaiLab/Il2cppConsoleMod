@@ -33,6 +33,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="README.md">
+      <LogicalName>Il2cppConsoleMod.README.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="BepInEx.Core">
       <HintPath>$(BepInExDir)/core/BepInEx.Core.dll</HintPath>
       <Private>False</Private>

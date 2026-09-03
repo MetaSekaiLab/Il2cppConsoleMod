@@ -10,6 +10,8 @@ namespace Il2cppConsoleMod;
 public sealed class HttpDebugServer : IDisposable
 {
     private const int MaxBodySize = 10 * 1024 * 1024;
+    private const string ReadmeResourceName = "Il2cppConsoleMod.README.md";
+    private static string? _cachedReadme;
 
     private readonly IPAddress _listenAddress;
     private readonly int _port;
@@ -132,8 +134,8 @@ public sealed class HttpDebugServer : IDisposable
                                "a trailing expression without ';' returns its value. " +
                                "POST /script/reset - clear the interactive session. " +
                                "GET /logcat - dump the whole BepInEx LogOutput.log as plain text. " +
-                               "GET /health, GET /help.";
-                    WriteJson(stream, 200, JsonSerializer.Serialize(new { help }));
+                               "GET /health, GET /help (also returns the embedded full README as 'readme').";
+                    WriteJson(stream, 200, JsonSerializer.Serialize(new { help, readme = GetEmbeddedReadme() }));
                     return;
                 }
 
@@ -263,6 +265,30 @@ public sealed class HttpDebugServer : IDisposable
 
         // Fall back to the expected default so the error message is still useful.
         return Path.GetFullPath(Path.Combine(start, "..", "LogOutput.log"));
+    }
+
+    /// <summary>Reads the README embedded into this assembly at build time (cached).</summary>
+    private static string? GetEmbeddedReadme()
+    {
+        if (_cachedReadme != null)
+            return _cachedReadme;
+
+        try
+        {
+            var assembly = typeof(HttpDebugServer).Assembly;
+            using var stream = assembly.GetManifestResourceStream(ReadmeResourceName);
+            if (stream == null)
+                return null;
+
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            _cachedReadme = reader.ReadToEnd();
+        }
+        catch
+        {
+            _cachedReadme = null;
+        }
+
+        return _cachedReadme;
     }
 
     private static string JsonError(string message)
