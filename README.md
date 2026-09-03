@@ -65,6 +65,66 @@ python3 scripts/console.py <ip> <token> [--port 18765]
 
 进入后逐句输入 C# 代码回车执行；`!reset` 清空会话，`!help` 查看帮助，`exit` 或 `Ctrl-D` 退出。
 
+## 动态 Harmony Patch（挂载 / 验证 / 撤销）
+
+在 `/script` 会话里可以对游戏方法做热补丁。**必须用 `/script` 而不要用 `/exec`**：`/exec` 的载荷编译进可回收 ALC，请求一结束就被卸载，补丁随之失效；`/script` 的程序集不可回收，补丁常驻。下面几点为强烈建议但非强制。
+
+- **不要使用反射。** interop 程序集里游戏成员全部为 public，直接引用即可；il2cpp dumper 产物 DummyDll/stub 里的 `private/protected` 只是转储产物，在 BepInEx/Il2cppInterop 中被全部公有化。目标方法一律用属性 + `nameof` 绑定。
+- 日志请走 BepInEx 日志源（写入 `LogOutput.log`）；`UnityEngine.Debug.Log` 在部分宿主上不可见。`Logger` 与 `UnityEngine.Logger` 撞名时用全限定 `BepInEx.Logging.Logger.CreateLogSource`。
+- 以下代码中的 `Example.*` / `TargetMethod` 均为占位符，按实际目标替换。
+
+**1. 挂载**（属性式声明，零反射）：
+
+```csharp
+using System;
+using BepInEx.Logging;
+using HarmonyLib;
+using Example.Gameplay;
+
+[HarmonyPatch(typeof(SomeLogic), nameof(SomeLogic.TargetMethod))]
+public static class DemoHook
+{
+    public static int HitCount;
+    private static readonly ManualLogSource Log = BepInEx.Logging.Logger.CreateLogSource("DemoHook");
+
+    [HarmonyPrefix]
+    public static bool Prefix(SomeLogic __instance)   // __instance = 本次调用实例
+    {
+        var n = System.Threading.Interlocked.Increment(ref HitCount);
+        Log.LogWarning($"[DemoHook] hit #{n} on {__instance?.GetType().Name}");
+        return false;   // false = 跳过原方法（原方法为 void 时同样生效，可用于“屏蔽”副作用）
+        // return true; // true = 放行，继续执行原方法
+    }
+}
+
+var hook = new Harmony("Demo.Hook");
+hook.PatchAll(typeof(DemoHook).Assembly);
+```
+
+**2. 验证**（不用每次进行，仅在行为异常时可进行调试；补丁已注册 / 强制 GC 后仍存活）：
+
+```csharp
+System.GC.Collect();
+System.GC.WaitForPendingFinalizers();
+
+var n = 0;
+foreach (var m in hook.GetPatchedMethods()) n++;
+"patched methods: " + n          // 期望 >= 1
+```
+
+**3. 撤销**：
+
+```csharp
+hook.UnpatchSelf();                       // 撤销该实例的全部补丁
+// 或 HarmonyLib.Harmony.UnpatchID("Demo.Hook");
+```
+
+**4. 语义要点**：
+
+- Prefix 返回 `bool`：`false` = 跳过原方法体（拦截/屏蔽），`true` = 照常执行。对返回 `void` 的原方法同样有效。
+- `Harmony.GetPatchInfo(...)` 在本版 HarmonyX 中是**静态**方法；`UnpatchSelf()` 已取代过时的实例版 `UnpatchAll()`。
+- 计数/日志只在进程内存与 `LogOutput.log` 中，重启游戏即全部消失，不会污染存档或产生残留。
+
 ## 构建
 ```
 dotnet build -c Release
