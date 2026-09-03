@@ -9,6 +9,7 @@ namespace Il2cppConsoleMod;
 public class Plugin : BasePlugin
 {
     private HttpDebugServer? _server;
+    private CSharpScriptSession? _session;
 
     public override void Load()
     {
@@ -46,7 +47,8 @@ public class Plugin : BasePlugin
             ClassInjector.RegisterTypeInIl2Cpp<RuntimeCSharpHost>();
             RuntimeCSharpHost.Create();
 
-            _server = new HttpDebugServer(listenAddress.Value, port.Value, token, Log);
+            _session = new CSharpScriptSession();
+            _server = new HttpDebugServer(listenAddress.Value, port.Value, token, Log, _session);
             _server.Start();
         }
         catch (Exception ex)

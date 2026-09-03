@@ -5,6 +5,8 @@
     <IncludeAssemblies>
       Microsoft.CodeAnalysis
       Microsoft.CodeAnalysis.CSharp
+      Microsoft.CodeAnalysis.CSharp.Scripting
+      Microsoft.CodeAnalysis.Scripting
       System.Collections.Immutable
       System.Reflection.Metadata
       System.Runtime.CompilerServices.Unsafe

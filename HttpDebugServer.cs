@@ -14,17 +14,19 @@ public sealed class HttpDebugServer : IDisposable
     private readonly int _port;
     private readonly string _token;
     private readonly ManualLogSource _log;
+    private readonly CSharpScriptSession _session;
 
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Thread? _thread;
 
-    public HttpDebugServer(string listenAddress, int port, string token, ManualLogSource log)
+    public HttpDebugServer(string listenAddress, int port, string token, ManualLogSource log, CSharpScriptSession session)
     {
         _listenAddress = IPAddress.Parse(listenAddress);
         _port = port;
         _token = token;
         _log = log;
+        _session = session;
     }
 
     public void Start()
@@ -116,9 +118,33 @@ public sealed class HttpDebugServer : IDisposable
 
                 if (request.Method == "GET" && request.Path == "/help")
                 {
-                    var help = "POST /exec with header 'X-Debug-Token: <token>'. " +
-                               "Body must contain: public static class Payload { public static object Execute() { ... } }";
+                    var help = "Endpoints (all need header 'X-Debug-Token: <token>'): " +
+                               "POST /exec - full program: public static class Payload { public static object Execute() { ... } }. " +
+                               "POST /script - interactive session: raw C# statements, state persists across calls, " +
+                               "a trailing expression without ';' returns its value. " +
+                               "POST /script/reset - clear the interactive session. " +
+                               "GET /health, GET /help.";
                     WriteJson(stream, 200, JsonSerializer.Serialize(new { help }));
+                    return;
+                }
+
+                if (request.Method == "POST" && request.Path == "/script/reset")
+                {
+                    _session.Reset();
+                    WriteJson(stream, 200, "{\"success\":true,\"message\":\"script session reset\"}");
+                    return;
+                }
+
+                if (request.Method == "POST" && request.Path == "/script")
+                {
+                    var scriptResult = RunOnMainThread(() => _session.Submit(request.Body ?? string.Empty));
+                    if (scriptResult == null)
+                    {
+                        WriteJson(stream, 500, "{\"error\":\"timeout waiting for main thread\"}");
+                        return;
+                    }
+
+                    WriteJson(stream, 200, JsonSerializer.Serialize(scriptResult));
                     return;
                 }
 
@@ -129,24 +155,14 @@ public sealed class HttpDebugServer : IDisposable
                 }
 
                 var source = request.Body ?? string.Empty;
-                var tcs = new TaskCompletionSource<CSharpExecutor.CSharpResult>(
-                    TaskCreationOptions.RunContinuationsAsynchronously);
-
-                MainThreadDispatcher.Enqueue(() =>
-                {
-                    var result = CSharpExecutor.Execute(source);
-                    tcs.TrySetResult(result);
-                });
-
-                var completed = tcs.Task.Wait(TimeSpan.FromSeconds(60));
-                if (!completed)
+                var execResult = RunOnMainThread(() => CSharpExecutor.Execute(source));
+                if (execResult == null)
                 {
                     WriteJson(stream, 500, "{\"error\":\"timeout waiting for main thread\"}");
                     return;
                 }
 
-                var result = tcs.Task.Result;
-                WriteJson(stream, 200, JsonSerializer.Serialize(result));
+                WriteJson(stream, 200, JsonSerializer.Serialize(execResult));
             }
         }
         catch (Exception ex)
@@ -159,6 +175,21 @@ public sealed class HttpDebugServer : IDisposable
     {
         return request.Headers.TryGetValue("X-Debug-Token", out var value)
                && string.Equals(value, _token, StringComparison.Ordinal);
+    }
+
+    private CSharpExecutor.CSharpResult? RunOnMainThread(Func<CSharpExecutor.CSharpResult> action)
+    {
+        var tcs = new TaskCompletionSource<CSharpExecutor.CSharpResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        MainThreadDispatcher.Enqueue(() =>
+        {
+            var result = action();
+            tcs.TrySetResult(result);
+        });
+
+        var completed = tcs.Task.Wait(TimeSpan.FromSeconds(60));
+        return completed ? tcs.Task.Result : null;
     }
 
     private static HttpRequest? ReadRequest(NetworkStream stream)

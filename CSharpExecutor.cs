@@ -11,6 +11,7 @@ public static class CSharpExecutor
     public sealed class CSharpResult
     {
         public bool Success { get; set; }
+        public bool HasResult { get; set; }
         public string? Output { get; set; }
         public string? Result { get; set; }
         public string? Error { get; set; }
@@ -96,7 +97,7 @@ public static class CSharpExecutor
         return method.Invoke(null, null);
     }
 
-    private static List<MetadataReference> BuildReferences()
+    internal static List<MetadataReference> BuildReferences()
     {
         var references = new List<MetadataReference>();
 
@@ -118,7 +119,7 @@ public static class CSharpExecutor
         return references;
     }
 
-    private static string? ConvertToString(object? value)
+    internal static string? ConvertToString(object? value)
     {
         if (value == null)
             return null;
