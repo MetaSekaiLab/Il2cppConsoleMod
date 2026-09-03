@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.Json;
 
 using Microsoft.CodeAnalysis;
@@ -29,23 +30,38 @@ public static class CSharpExecutor
             try
             {
                 Console.SetOut(output);
-                var returnValue = CompileAndInvoke(source);
 
-                return new CSharpResult
+                // Load each payload into a fresh collectible ALC so repeated /exec
+                // calls do not permanently accumulate assemblies in the default ALC.
+                var alc = new CollectibleAssemblyLoadContext();
+                try
                 {
-                    Success = true,
-                    Output = output.ToString(),
-                    Result = returnValue == null ? null : ConvertToString(returnValue)
-                };
-            }
-            catch (Exception ex)
-            {
-                return new CSharpResult
+                    var returnValue = CompileAndInvoke(alc, source);
+                    var resultText = returnValue == null ? null : ConvertToString(returnValue);
+                    return new CSharpResult
+                    {
+                        Success = true,
+                        Output = output.ToString(),
+                        Result = resultText
+                    };
+                }
+                catch (Exception ex)
                 {
-                    Success = false,
-                    Output = output.ToString(),
-                    Error = ex.ToString()
-                };
+                    return new CSharpResult
+                    {
+                        Success = false,
+                        Output = output.ToString(),
+                        Error = ex.ToString()
+                    };
+                }
+                finally
+                {
+                    // Best effort: unload only completes once the payload and its
+                    // results are no longer referenced anywhere. Payloads that stash
+                    // state into the game (static fields, events, threads) keep the
+                    // ALC alive until the game restarts.
+                    alc.Unload();
+                }
             }
             finally
             {
@@ -54,7 +70,7 @@ public static class CSharpExecutor
         }
     }
 
-    private static object? CompileAndInvoke(string source)
+    private static object? CompileAndInvoke(AssemblyLoadContext alc, string source)
     {
         var references = BuildReferences();
 
@@ -82,7 +98,8 @@ public static class CSharpExecutor
             throw new InvalidOperationException("编译失败:\n" + errors);
         }
 
-        var assembly = Assembly.Load(peStream.ToArray());
+        peStream.Position = 0;
+        var assembly = alc.LoadFromStream(peStream);
 
         var type = assembly.GetType("Payload")
                    ?? assembly.GetTypes().FirstOrDefault(t =>
@@ -97,26 +114,46 @@ public static class CSharpExecutor
         return method.Invoke(null, null);
     }
 
+    // References are cached and only rebuilt when the set of loaded assembly
+    // locations changes, so repeated /exec calls do not re-read metadata from
+    // every assembly on disk each time. Assemblies loaded later are picked up
+    // automatically on the next rebuild.
+    private static readonly object ReferencesSync = new();
+    private static List<MetadataReference>? _cachedReferences;
+    private static HashSet<string>? _cachedLocations;
+
     internal static List<MetadataReference> BuildReferences()
     {
-        var references = new List<MetadataReference>();
+        var locations = AppDomain.CurrentDomain.GetAssemblies()
+            .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
+            .Select(a => a.Location)
+            .ToList();
 
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        lock (ReferencesSync)
         {
-            if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location))
-                continue;
+            if (_cachedReferences == null || _cachedLocations == null ||
+                !_cachedLocations.SetEquals(locations))
+            {
+                var references = new List<MetadataReference>(locations.Count);
+                foreach (var location in locations)
+                {
+                    try
+                    {
+                        references.Add(MetadataReference.CreateFromFile(location));
+                    }
+                    catch
+                    {
+                        // ignore assemblies whose metadata cannot be read
+                    }
+                }
 
-            try
-            {
-                references.Add(MetadataReference.CreateFromFile(assembly.Location));
+                _cachedReferences = references;
+                _cachedLocations = new HashSet<string>(locations, StringComparer.Ordinal);
             }
-            catch
-            {
-                // ignore
-            }
+
+            // Return a copy so callers cannot mutate the shared cache.
+            return new List<MetadataReference>(_cachedReferences);
         }
-
-        return references;
     }
 
     internal static string? ConvertToString(object? value)
@@ -134,6 +171,13 @@ public static class CSharpExecutor
         catch
         {
             return value.ToString();
+        }
+    }
+
+    private sealed class CollectibleAssemblyLoadContext : AssemblyLoadContext
+    {
+        public CollectibleAssemblyLoadContext() : base(isCollectible: true)
+        {
         }
     }
 }
