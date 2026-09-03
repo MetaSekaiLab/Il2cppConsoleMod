@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using BepInEx.Logging;
@@ -12,7 +13,7 @@ public sealed class HttpDebugServer : IDisposable
 
     private readonly IPAddress _listenAddress;
     private readonly int _port;
-    private readonly string _token;
+    private readonly byte[] _expectedTokenHash;
     private readonly ManualLogSource _log;
     private readonly CSharpScriptSession _session;
 
@@ -24,7 +25,9 @@ public sealed class HttpDebugServer : IDisposable
     {
         _listenAddress = IPAddress.Parse(listenAddress);
         _port = port;
-        _token = token;
+        // Compare SHA-256 digests instead of the raw token so the comparison
+        // does not leak timing information about the expected token.
+        _expectedTokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         _log = log;
         _session = session;
     }
@@ -100,7 +103,7 @@ public sealed class HttpDebugServer : IDisposable
             using (client)
             using (var stream = client.GetStream())
             {
-                var request = ReadRequest(stream);
+                var request = ReadHeaders(stream);
                 if (request == null)
                     return;
 
@@ -109,6 +112,11 @@ public sealed class HttpDebugServer : IDisposable
                     WriteJson(stream, 401, "{\"error\":\"unauthorized\"}");
                     return;
                 }
+
+                // Read the body only after auth succeeds, so unauthenticated
+                // clients cannot make us buffer arbitrary amounts of data.
+                if (!ReadBody(stream, request))
+                    return;
 
                 if (request.Method == "GET" && request.Path == "/health")
                 {
@@ -174,7 +182,9 @@ public sealed class HttpDebugServer : IDisposable
     private bool CheckAuth(HttpRequest request)
     {
         return request.Headers.TryGetValue("X-Debug-Token", out var value)
-               && string.Equals(value, _token, StringComparison.Ordinal);
+               && CryptographicOperations.FixedTimeEquals(
+                   SHA256.HashData(Encoding.UTF8.GetBytes(value)),
+                   _expectedTokenHash);
     }
 
     private CSharpExecutor.CSharpResult? RunOnMainThread(Func<CSharpExecutor.CSharpResult> action)
@@ -192,7 +202,7 @@ public sealed class HttpDebugServer : IDisposable
         return completed ? tcs.Task.Result : null;
     }
 
-    private static HttpRequest? ReadRequest(NetworkStream stream)
+    private static HttpRequest? ReadHeaders(NetworkStream stream)
     {
         var headerBytes = new List<byte>();
         var one = new byte[1];
@@ -241,35 +251,40 @@ public sealed class HttpDebugServer : IDisposable
             headers[name] = value;
         }
 
-        string? body = null;
-        if (headers.TryGetValue("Content-Length", out var lengthText)
-            && int.TryParse(lengthText, out var contentLength)
-            && contentLength > 0)
-        {
-            if (contentLength > MaxBodySize)
-                return null;
-
-            var bodyBytes = new byte[contentLength];
-            var readTotal = 0;
-            while (readTotal < contentLength)
-            {
-                var n = stream.Read(bodyBytes, readTotal, contentLength - readTotal);
-                if (n == 0)
-                    return null;
-
-                readTotal += n;
-            }
-
-            body = Encoding.UTF8.GetString(bodyBytes);
-        }
-
         return new HttpRequest
         {
             Method = requestLine[0].ToUpperInvariant(),
             Path = requestLine[1],
-            Headers = headers,
-            Body = body
+            Headers = headers
         };
+    }
+
+    /// <summary>Reads the request body according to Content-Length. Returns false on malformed input.</summary>
+    private static bool ReadBody(NetworkStream stream, HttpRequest request)
+    {
+        if (!request.Headers.TryGetValue("Content-Length", out var lengthText)
+            || !int.TryParse(lengthText, out var contentLength)
+            || contentLength <= 0)
+        {
+            return true;
+        }
+
+        if (contentLength > MaxBodySize)
+            return false;
+
+        var bodyBytes = new byte[contentLength];
+        var readTotal = 0;
+        while (readTotal < contentLength)
+        {
+            var n = stream.Read(bodyBytes, readTotal, contentLength - readTotal);
+            if (n == 0)
+                return false;
+
+            readTotal += n;
+        }
+
+        request.Body = Encoding.UTF8.GetString(bodyBytes);
+        return true;
     }
 
     private static void WriteJson(NetworkStream stream, int statusCode, string json)
@@ -302,6 +317,6 @@ public sealed class HttpDebugServer : IDisposable
         public string Method { get; init; } = "";
         public string Path { get; init; } = "";
         public Dictionary<string, string> Headers { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? Body { get; init; }
+        public string? Body { get; set; }
     }
 }
