@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using BepInEx.Logging;
+using Il2cppConsoleMod.Web;
 
 namespace Il2cppConsoleMod;
 
@@ -18,12 +19,13 @@ public sealed class HttpDebugServer : IDisposable
     private readonly byte[] _expectedTokenHash;
     private readonly ManualLogSource _log;
     private readonly CSharpScriptSession _session;
+    private readonly WebApi _api;
 
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Thread? _thread;
 
-    public HttpDebugServer(string listenAddress, int port, string token, ManualLogSource log, CSharpScriptSession session)
+    internal HttpDebugServer(string listenAddress, int port, string token, ManualLogSource log, CSharpScriptSession session, WebApi api)
     {
         _listenAddress = IPAddress.Parse(listenAddress);
         _port = port;
@@ -32,6 +34,7 @@ public sealed class HttpDebugServer : IDisposable
         _expectedTokenHash = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         _log = log;
         _session = session;
+        _api = api;
     }
 
     public void Start()
@@ -65,6 +68,7 @@ public sealed class HttpDebugServer : IDisposable
         _thread = thread;
 
         _log.LogWarning($"Il2cppConsoleMod HTTP server listening on http://{_listenAddress}:{_port}/exec");
+        _log.LogWarning($"Il2cppConsoleMod web console: http://{DisplayHost()}:{_port}/ (paste the token above to sign in)");
     }
 
     public void Stop()
@@ -110,6 +114,10 @@ public sealed class HttpDebugServer : IDisposable
                 if (request == null)
                     return;
 
+                // The web UI's static files carry no secrets; the page asks for the token itself.
+                if (StaticAssets.TryServe(request, stream))
+                    return;
+
                 if (!CheckAuth(request))
                 {
                     WriteJson(stream, 401, "{\"error\":\"unauthorized\"}");
@@ -120,6 +128,12 @@ public sealed class HttpDebugServer : IDisposable
                 // clients cannot make us buffer arbitrary amounts of data.
                 if (!ReadBody(stream, request))
                     return;
+
+                if (request.Route.StartsWith("/api/", StringComparison.Ordinal))
+                {
+                    _api.Handle(request, stream);
+                    return;
+                }
 
                 if (request.Method == "GET" && request.Path == "/health")
                 {
@@ -135,12 +149,14 @@ public sealed class HttpDebugServer : IDisposable
                                "a trailing expression without ';' returns its value. " +
                                "POST /script/reset - clear the interactive session. " +
                                "GET /logcat - dump the whole BepInEx LogOutput.log as plain text. " +
+                               "GET / - web console (object inspector, scene tree, type browser, C# console, logs); " +
+                               "its JSON API lives under /api/*. " +
                                "GET /health, GET /help (also returns the embedded full README as 'readme').";
                     WriteJson(stream, 200, JsonSerializer.Serialize(new { help, readme = GetEmbeddedReadme() }));
                     return;
                 }
 
-                if (request.Method == "GET" && IsPath(request.Path, "/logcat"))
+                if (request.Method == "GET" && request.Route == "/logcat")
                 {
                     ServeLogcat(stream);
                     return;
@@ -155,7 +171,8 @@ public sealed class HttpDebugServer : IDisposable
 
                 if (request.Method == "POST" && request.Path == "/script")
                 {
-                    var scriptResult = RunOnMainThread(() => _session.Submit(request.Body ?? string.Empty));
+                    // Compiles on this thread, executes on the main thread.
+                    var scriptResult = RunWithTimeout(() => _session.Submit(request.Body ?? string.Empty));
                     if (scriptResult == null)
                     {
                         WriteJson(stream, 500, "{\"error\":\"timeout waiting for main thread\"}");
@@ -173,7 +190,7 @@ public sealed class HttpDebugServer : IDisposable
                 }
 
                 var source = request.Body ?? string.Empty;
-                var execResult = RunOnMainThread(() => CSharpExecutor.Execute(source));
+                var execResult = RunWithTimeout(() => CSharpExecutor.Execute(source));
                 if (execResult == null)
                 {
                     WriteJson(stream, 500, "{\"error\":\"timeout waiting for main thread\"}");
@@ -187,16 +204,6 @@ public sealed class HttpDebugServer : IDisposable
         {
             _log.LogError($"Il2cppConsoleMod HTTP handler error: {ex}");
         }
-    }
-
-    /// <summary>True if the raw request path (ignoring any query string) equals the given route.</summary>
-    private static bool IsPath(string pathWithQuery, string route)
-    {
-        var path = pathWithQuery;
-        var q = path.IndexOf('?');
-        if (q >= 0)
-            path = path.Substring(0, q);
-        return path == route;
     }
 
     /// <summary>GET /logcat: streams the whole BepInEx LogOutput.log back as plain text.</summary>
@@ -303,20 +310,20 @@ public sealed class HttpDebugServer : IDisposable
                    _expectedTokenHash);
     }
 
-    private CSharpExecutor.CSharpResult? RunOnMainThread(Func<CSharpExecutor.CSharpResult> action)
+    private static CSharpExecutor.CSharpResult? RunWithTimeout(Func<CSharpExecutor.CSharpResult> action)
     {
-        var tcs = new TaskCompletionSource<CSharpExecutor.CSharpResult>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        MainThreadDispatcher.Enqueue(() =>
+        try
         {
-            var result = action();
-            tcs.TrySetResult(result);
-        });
-
-        var completed = tcs.Task.Wait(TimeSpan.FromSeconds(60));
-        return completed ? tcs.Task.Result : null;
+            return action();
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
     }
+
+    private string DisplayHost()
+        => _listenAddress.Equals(IPAddress.Any) || _listenAddress.Equals(IPAddress.IPv6Any) ? "127.0.0.1" : _listenAddress.ToString();
 
     private static HttpRequest? ReadHeaders(NetworkStream stream)
     {
@@ -404,35 +411,5 @@ public sealed class HttpDebugServer : IDisposable
     }
 
     private static void WriteJson(NetworkStream stream, int statusCode, string json)
-    {
-        var reason = statusCode switch
-        {
-            200 => "OK",
-            400 => "Bad Request",
-            401 => "Unauthorized",
-            404 => "Not Found",
-            500 => "Internal Server Error",
-            _ => "OK"
-        };
-
-        var bodyBytes = Encoding.UTF8.GetBytes(json);
-        var header = $"HTTP/1.1 {statusCode} {reason}\r\n" +
-                     "Content-Type: application/json; charset=utf-8\r\n" +
-                     $"Content-Length: {bodyBytes.Length}\r\n" +
-                     "Connection: close\r\n" +
-                     "\r\n";
-
-        var headerBytes = Encoding.ASCII.GetBytes(header);
-        stream.Write(headerBytes, 0, headerBytes.Length);
-        stream.Write(bodyBytes, 0, bodyBytes.Length);
-        stream.Flush();
-    }
-
-    private sealed class HttpRequest
-    {
-        public string Method { get; init; } = "";
-        public string Path { get; init; } = "";
-        public Dictionary<string, string> Headers { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-        public string? Body { get; set; }
-    }
+        => HttpResponse.Json(stream, statusCode, json);
 }

@@ -8,7 +8,7 @@
 
     <AssemblyName>Il2cppConsoleMod</AssemblyName>
     <RootNamespace>Il2cppConsoleMod</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
 
     <OutputPath>$(BepInExDir)/plugins</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -36,6 +36,9 @@
     <EmbeddedResource Include="README.md">
       <LogicalName>Il2cppConsoleMod.README.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Web/wwwroot/*">
+      <LogicalName>Il2cppConsoleMod.wwwroot.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
@@ -47,12 +50,20 @@
       <HintPath>$(BepInExDir)/core/BepInEx.Unity.IL2CPP.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="SemanticVersioning">
+      <HintPath>$(BepInExDir)/core/SemanticVersioning.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="Il2CppInterop.Runtime">
       <HintPath>$(BepInExDir)/core/Il2CppInterop.Runtime.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(BepInExDir)/interop/UnityEngine.CoreModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(BepInExDir)/interop/UnityEngine.ImageConversionModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Il2Cppmscorlib">

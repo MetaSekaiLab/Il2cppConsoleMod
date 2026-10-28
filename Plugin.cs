@@ -1,6 +1,8 @@
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
+using Il2cppConsoleMod.Inspector;
+using Il2cppConsoleMod.Web;
 using Il2CppInterop.Runtime.Injection;
 
 namespace Il2cppConsoleMod;
@@ -10,6 +12,7 @@ public class Plugin : BasePlugin
 {
     private HttpDebugServer? _server;
     private CSharpScriptSession? _session;
+    private LogBuffer? _logs;
 
     public override void Load()
     {
@@ -47,8 +50,13 @@ public class Plugin : BasePlugin
             ClassInjector.RegisterTypeInIl2Cpp<RuntimeCSharpHost>();
             RuntimeCSharpHost.Create();
 
+            _logs = new LogBuffer();
+            BepInEx.Logging.Logger.Listeners.Add(_logs);
+            TypeCatalog.Prewarm();
+
             _session = new CSharpScriptSession();
-            _server = new HttpDebugServer(listenAddress.Value, port.Value, token, Log, _session);
+            var api = new WebApi(_session, new UnityGameHost(), _logs);
+            _server = new HttpDebugServer(listenAddress.Value, port.Value, token, Log, _session, api);
             _server.Start();
         }
         catch (Exception ex)
@@ -60,6 +68,8 @@ public class Plugin : BasePlugin
     public override bool Unload()
     {
         _server?.Stop();
+        if (_logs != null)
+            BepInEx.Logging.Logger.Listeners.Remove(_logs);
         return true;
     }
 

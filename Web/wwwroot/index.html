@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Il2Cpp Console</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mark"/></svg>
+        <span class="brand-name">Il2Cpp Console</span>
+        <span class="brand-game" id="game-title"></span>
+      </div>
+      <button class="palette-trigger" id="palette-open" type="button">
+        <svg class="i"><use href="#i-search"/></svg>
+        <span>搜索类型、对象、命令…</span>
+        <kbd>Ctrl</kbd><kbd>K</kbd>
+      </button>
+      <div class="status" id="status">
+        <span class="chip" id="st-conn" title="连接状态"><i class="dot"></i><span>连接中</span></span>
+        <span class="chip mono" id="st-fps" title="帧率">— fps</span>
+        <span class="chip" id="st-scene" title="当前场景">—</span>
+        <span class="chip mono" id="st-mem" title="托管内存 / 进程内存">—</span>
+        <span class="chip mono" id="st-handles" title="已登记的对象句柄">—</span>
+      </div>
+      <div class="top-actions">
+        <button class="icon-btn" id="theme-toggle" type="button" title="切换主题"><svg class="i"><use href="#i-contrast"/></svg></button>
+        <button class="icon-btn" id="about-open" type="button" title="说明"><svg class="i"><use href="#i-help"/></svg></button>
+      </div>
+    </header>
+
+    <main class="workspace" id="workspace">
+      <aside class="sidebar" id="sidebar">
+        <nav class="tabs side-tabs" role="tablist">
+          <button class="tab active" data-side="scene" type="button"><svg class="i"><use href="#i-layers"/></svg>场景</button>
+          <button class="tab" data-side="types" type="button"><svg class="i"><use href="#i-braces"/></svg>类型</button>
+          <button class="tab" data-side="session" type="button"><svg class="i"><use href="#i-bookmark"/></svg>会话</button>
+        </nav>
+
+        <section class="side-panel active" data-side="scene">
+          <div class="side-toolbar">
+            <label class="search">
+              <svg class="i"><use href="#i-search"/></svg>
+              <input id="scene-filter" type="search" placeholder="按名称查找 GameObject" spellcheck="false">
+            </label>
+            <button class="icon-btn" id="scene-refresh" type="button" title="刷新场景"><svg class="i"><use href="#i-refresh"/></svg></button>
+          </div>
+          <div class="tree scroll" id="scene-tree" tabindex="0"></div>
+        </section>
+
+        <section class="side-panel" data-side="types">
+          <div class="side-toolbar">
+            <label class="search">
+              <svg class="i"><use href="#i-search"/></svg>
+              <input id="type-filter" type="search" placeholder="类型名，支持缩写如 RTS" spellcheck="false">
+            </label>
+          </div>
+          <div class="tree scroll" id="type-tree" tabindex="0"></div>
+        </section>
+
+        <section class="side-panel" data-side="session">
+          <div class="scroll session-scroll">
+            <div class="section">
+              <div class="section-head"><span>收藏</span><span class="muted" id="pin-count"></span></div>
+              <div id="pins" class="list"></div>
+            </div>
+            <div class="section">
+              <div class="section-head">
+                <span>监视表达式</span>
+                <label class="toggle-mini" title="每秒刷新"><input type="checkbox" id="watch-live" checked><span>实时</span></label>
+              </div>
+              <form id="watch-form" class="watch-form" autocomplete="off">
+                <input id="watch-input" class="mono" placeholder="Time.time，或 $12.name" spellcheck="false">
+              </form>
+              <div id="watches" class="list"></div>
+            </div>
+            <div class="section">
+              <div class="section-head">
+                <span>控制台变量</span>
+                <button class="link-btn" id="vars-refresh" type="button">刷新</button>
+              </div>
+              <div id="vars" class="list"></div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <div class="resizer vertical" id="side-resizer" title="拖动调整宽度"></div>
+
+      <section class="main" id="main">
+        <div class="inspector" id="inspector">
+          <div class="nav-bar">
+            <button class="icon-btn" id="nav-back" type="button" title="后退 (Alt+←)" disabled><svg class="i"><use href="#i-left"/></svg></button>
+            <button class="icon-btn" id="nav-forward" type="button" title="前进 (Alt+→)" disabled><svg class="i"><use href="#i-right"/></svg></button>
+            <div class="crumbs" id="crumbs"></div>
+            <div class="nav-actions" id="nav-actions"></div>
+          </div>
+          <div class="inspector-body scroll" id="inspector-body"></div>
+        </div>
+
+        <div class="resizer horizontal" id="drawer-resizer" title="拖动调整高度"></div>
+
+        <div class="drawer" id="drawer">
+          <nav class="tabs drawer-tabs" role="tablist">
+            <button class="tab active" data-drawer="console" type="button"><svg class="i"><use href="#i-terminal"/></svg>控制台</button>
+            <button class="tab" data-drawer="logs" type="button"><svg class="i"><use href="#i-file"/></svg>日志<span class="badge" id="log-badge" hidden></span></button>
+            <span class="spacer"></span>
+            <button class="icon-btn" id="drawer-max" type="button" title="最大化 / 还原 (Ctrl+`)"><svg class="i"><use href="#i-maximize"/></svg></button>
+          </nav>
+
+          <section class="drawer-panel active" data-drawer="console">
+            <div class="console-out scroll" id="console-out"></div>
+            <div class="console-in">
+              <div class="console-bar">
+                <div class="segmented" id="console-mode">
+                  <button type="button" class="active" data-mode="script" title="交互式：变量跨提交保留">脚本</button>
+                  <button type="button" data-mode="program" title="完整程序：public static class Payload { Execute() }">程序</button>
+                </div>
+                <span class="hint" id="console-hint">Enter 执行 · Shift+Enter 换行 · Ctrl+Space 补全 · ↑↓ 历史 · $12 引用对象 · $_ 上次结果</span>
+                <span class="spacer"></span>
+                <button class="btn ghost" id="snippets-open" type="button"><svg class="i"><use href="#i-code"/></svg>片段</button>
+                <button class="btn ghost" id="console-reset" type="button" title="清空会话变量"><svg class="i"><use href="#i-rotate"/></svg>重置会话</button>
+                <button class="btn ghost" id="console-clear" type="button" title="清空输出 (Ctrl+L)"><svg class="i"><use href="#i-trash"/></svg>清空</button>
+              </div>
+              <div class="editor" id="editor">
+                <pre class="editor-hl mono" aria-hidden="true"><code id="editor-hl"></code></pre>
+                <textarea id="editor-input" class="editor-input mono" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="输入 C#，例如 GameObject.Find(&quot;Main Camera&quot;)"></textarea>
+                <div class="completion" id="completion" hidden></div>
+                <button class="run-btn" id="console-run" type="button" title="执行 (Enter / Ctrl+Enter)"><svg class="i"><use href="#i-play"/></svg></button>
+              </div>
+            </div>
+          </section>
+
+          <section class="drawer-panel" data-drawer="logs">
+            <div class="log-toolbar">
+              <div class="segmented multi" id="log-levels">
+                <button type="button" class="active" data-level="error">错误</button>
+                <button type="button" class="active" data-level="warn">警告</button>
+                <button type="button" class="active" data-level="info">信息</button>
+                <button type="button" data-level="debug">调试</button>
+              </div>
+              <select id="log-source" class="select"><option value="">全部来源</option></select>
+              <label class="search small">
+                <svg class="i"><use href="#i-search"/></svg>
+                <input id="log-filter" type="search" placeholder="过滤日志" spellcheck="false">
+              </label>
+              <span class="spacer"></span>
+              <label class="toggle-mini"><input type="checkbox" id="log-follow" checked><span>跟随</span></label>
+              <button class="btn ghost" id="log-full" type="button" title="打开完整 LogOutput.log"><svg class="i"><use href="#i-external"/></svg>完整日志</button>
+              <button class="btn ghost" id="log-clear" type="button"><svg class="i"><use href="#i-trash"/></svg>清空</button>
+            </div>
+            <div class="log-list scroll mono" id="log-list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay" id="login" hidden>
+    <form class="login-card" id="login-form" autocomplete="off">
+      <svg class="login-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mark"/></svg>
+      <h1>Il2Cpp Console</h1>
+      <p class="muted">输入游戏日志中打印的 token。<br>在 <code>BepInEx/LogOutput.log</code> 里搜索 <code>Il2cppConsoleMod token</code>。</p>
+      <input id="login-token" class="mono" type="password" placeholder="token" spellcheck="false" autocomplete="off">
+      <label class="check"><input type="checkbox" id="login-remember"><span>在此浏览器记住（localStorage）</span></label>
+      <p class="login-error" id="login-error" hidden></p>
+      <button class="btn primary" type="submit">连接</button>
+    </form>
+  </div>
+
+  <div class="overlay palette-overlay" id="palette" hidden>
+    <div class="palette" role="dialog" aria-label="命令面板">
+      <label class="palette-input">
+        <svg class="i"><use href="#i-search"/></svg>
+        <input id="palette-input" type="text" placeholder="类型名、GameObject 名，或 > 命令" spellcheck="false" autocomplete="off">
+        <kbd>Esc</kbd>
+      </label>
+      <div class="palette-list scroll" id="palette-list"></div>
+    </div>
+  </div>
+
+  <div class="overlay modal-overlay" id="modal" hidden>
+    <div class="modal" role="dialog">
+      <div class="modal-head"><span id="modal-title"></span><button class="icon-btn" id="modal-close" type="button"><svg class="i"><use href="#i-x"/></svg></button></div>
+      <div class="modal-body scroll" id="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="menu" id="menu" hidden></div>
+  <div class="toasts" id="toasts"></div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-mark" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#9aa5ff"/>
+        <stop offset="1" stop-color="#f29ab3"/>
+      </linearGradient>
+    </defs>
+    <symbol id="i-mark" viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="6" fill="url(#g-mark)"/><path d="M9.2 8.2 6.4 12l2.8 3.8M14.8 8.2l2.8 3.8-2.8 3.8" fill="none" stroke="#0d0f14" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+    <symbol id="i-braces" viewBox="0 0 24 24"><path d="M8 4H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1M16 4h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3.5h12v17l-6-4-6 4v-17Z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v3.5h3.5M4 13a8 8 0 0 0 14.6 4.5M20 20v-3.5h-3.5"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5M13 15h4"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-maximize" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4v4.5H8"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-contrast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.6M12 16.8v.2"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6ZM12 14v7"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+    <symbol id="i-dollar" viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M12 17h7"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m20 16-4.5-4.5L7 19.5"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 13.5h6L10 21l8-10.5h-6L13 3Z"/></symbol>
+    <symbol id="i-scene" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 9h18"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-package" viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"/><path d="M8 5.3 16 9.8"/></symbol>
+  </svg>
+
+  <script src="app.js"></script>
+</body>
+</html>
