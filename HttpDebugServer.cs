@@ -43,7 +43,8 @@ public sealed class HttpDebugServer : IDisposable
         listener.Start();
 
         var cts = new CancellationTokenSource();
-        var thread = new Thread(() => AcceptLoop(cts.Token))
+        // Hand the listener over directly: the thread may start before _listener is assigned.
+        var thread = new Thread(() => AcceptLoop(listener, cts.Token))
         {
             IsBackground = true,
             Name = "Il2cppConsoleModHttp"
@@ -80,14 +81,14 @@ public sealed class HttpDebugServer : IDisposable
         Stop();
     }
 
-    private void AcceptLoop(CancellationToken ct)
+    private void AcceptLoop(TcpListener listener, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
             TcpClient client;
             try
             {
-                client = _listener!.AcceptTcpClient();
+                client = listener.AcceptTcpClient();
             }
             catch
             {
