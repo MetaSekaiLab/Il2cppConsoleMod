@@ -36,6 +36,11 @@ public class Plugin : BasePlugin
             "Acknowledge the security risks of arbitrary code execution. Both this and Enabled must be true to start.\n" +
             "确认任意代码执行的安全风险。此开关和 Enabled 都必须为 true 才能启动。");
 
+        var nativeUpdateHook = Config.Bind(
+            "Compatibility", "UseNativeUpdateHook", false,
+            "Run main-thread work from a Dobby hook on EventSystem.Update instead of an injected MonoBehaviour. Turn on for Android hosts where the injected Update never runs.\n" +
+            "用 Dobby 挂钩 EventSystem.Update 来执行主线程任务，代替注入的 MonoBehaviour。注入组件的 Update 不运行的 Android 环境请打开。");
+
         if (!enabled.Value || !acknowledgeRisk.Value)
         {
             Log.LogWarning("Il2cppConsoleMod is disabled. Set Security.Enabled=true and Security.AcknowledgeRisk=true in the config to enable.");
@@ -47,8 +52,15 @@ public class Plugin : BasePlugin
 
         try
         {
-            ClassInjector.RegisterTypeInIl2Cpp<RuntimeCSharpHost>();
-            RuntimeCSharpHost.Create();
+            if (nativeUpdateHook.Value)
+            {
+                NativeUpdateHook.Install(Log);
+            }
+            else
+            {
+                ClassInjector.RegisterTypeInIl2Cpp<RuntimeCSharpHost>();
+                RuntimeCSharpHost.Create();
+            }
 
             _logs = new LogBuffer();
             BepInEx.Logging.Logger.Listeners.Add(_logs);
@@ -68,6 +80,7 @@ public class Plugin : BasePlugin
     public override bool Unload()
     {
         _server?.Stop();
+        NativeUpdateHook.Uninstall();
         if (_logs != null)
             BepInEx.Logging.Logger.Listeners.Remove(_logs);
         return true;
