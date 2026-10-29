@@ -774,7 +774,7 @@ const Inspector = {
     const isGo = d.facets.includes('gameobject');
     const isComp = d.facets.includes('component');
     const ic = d.isStatic ? 'braces' : isGo ? 'cube' : isComp ? 'package' : d.facets.includes('items') ? 'list' : d.facets.includes('preview') ? 'image' : d.value.k === 'struct' ? 'box' : 'cube';
-    const kindLabel = d.isStatic ? `static ${d.type.kind}` : isGo ? 'GameObject' : isComp ? 'Component' : d.type.kind;
+    const kindLabel = d.isStatic ? (d.type.kind === 'static' ? 'static class' : `static ${d.type.kind}`) : isGo ? 'GameObject' : isComp ? 'Component' : d.type.kind;
 
     const sub = h('div', { class: 'obj-sub' });
     const typeLink = h('span', { class: 'type-link mono', text: d.type.full, title: d.isStatic ? d.type.full : '查看此类型的静态成员' });
