@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <div id="app" class="app" hidden>
+  <div id="app" class="app" data-pane="side" hidden>
     <header class="topbar">
       <div class="brand">
         <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-mark"/></svg>
@@ -159,6 +159,12 @@
         </div>
       </section>
     </main>
+
+    <nav class="mobile-nav" id="mobile-nav">
+      <button type="button" data-pane="side" class="active"><svg class="i"><use href="#i-layers"/></svg>浏览</button>
+      <button type="button" data-pane="main"><svg class="i"><use href="#i-cube"/></svg>检查</button>
+      <button type="button" data-pane="drawer"><svg class="i"><use href="#i-terminal"/></svg>控制台</button>
+    </nav>
   </div>
 
   <div class="overlay" id="login" hidden>

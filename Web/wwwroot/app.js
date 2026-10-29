@@ -313,8 +313,8 @@ class VTree {
     this.track(path, row, m.error ? 'e:' + m.error : valueSig(v));
 
     if (expandable) {
-      caret.addEventListener('click', () => this.toggle(row, kids, v, depth, path));
-      row.addEventListener('dblclick', e => { if (!e.target.closest('input,select,button')) this.toggle(row, kids, v, depth, path); });
+      nameCell.addEventListener('click', e => { if (!e.target.closest('.link')) this.toggle(row, kids, v, depth, path); });
+      row.addEventListener('dblclick', e => { if (!e.target.closest('input,select,button,.v-name')) this.toggle(row, kids, v, depth, path); });
     }
     row.addEventListener('contextmenu', e => valueMenu(e, v, m.name));
     node.append(row, kids);
@@ -513,14 +513,15 @@ class VTree {
     const label = it.key
       ? h('span', { class: 'nm' }, h('span', { class: 'n', text: '[' }), renderValue(it.key), h('span', { class: 'n', text: ']' }))
       : h('span', { class: 'nm idx', text: `[${it.i}]` });
+    const nameCell = h('div', { class: 'v-name' }, caret, label);
     const row = h('div', { class: 'v-row', style: { '--depth': depth } },
-      h('div', { class: 'v-name' }, caret, label),
+      nameCell,
       h('div', { class: 'v-type', text: v?.t || '', title: v?.t || '' }),
       this.valueCell({ name: `[${it.i}]`, value: v }, {}, node, depth, p));
     this.track(p, row, valueSig(v) + '|' + valueSig(it.key));
     if (expandable) {
-      caret.addEventListener('click', () => this.toggle(row, kids, v, depth, p));
-      row.addEventListener('dblclick', () => this.toggle(row, kids, v, depth, p));
+      nameCell.addEventListener('click', e => { if (!e.target.closest('.link')) this.toggle(row, kids, v, depth, p); });
+      row.addEventListener('dblclick', e => { if (!e.target.closest('input,select,button,.v-name')) this.toggle(row, kids, v, depth, p); });
     }
     row.addEventListener('contextmenu', e => valueMenu(e, v, `[${it.i}]`));
     node.append(row, kids);
@@ -691,6 +692,7 @@ const Inspector = {
       this.history[this.index].tab = this.tab;
       this.render();
       SceneTree.reveal(data.node?.h);
+      Mobile.follow('main');
     } catch (e) {
       if (seq === this.openSeq) fail(e);
     }
@@ -1182,6 +1184,7 @@ const Sidebar = {
   },
   show(name) {
     this.current = name;
+    Mobile.follow('side');
     $$('.side-tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.side === name));
     $$('.side-panel').forEach(p => p.classList.toggle('active', p.dataset.side === name));
     if (name === 'types') Types.ensure();
@@ -2166,6 +2169,7 @@ const Drawer = {
   },
   show(name) {
     this.current = name;
+    Mobile.follow('drawer');
     $$('.drawer-tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.drawer === name));
     $$('.drawer-panel').forEach(p => p.classList.toggle('active', p.dataset.drawer === name));
     if (name === 'logs') {
@@ -2176,6 +2180,21 @@ const Drawer = {
     }
   },
   toggleMax() { $('#drawer').classList.toggle('max'); },
+};
+
+/** Phones show one pane at a time; jump to the pane that just got new content. */
+const Mobile = {
+  narrow: matchMedia('(max-width: 720px)'),
+  init() {
+    $$('#mobile-nav button').forEach(b => b.addEventListener('click', () => this.show(b.dataset.pane)));
+  },
+  show(pane) {
+    $('#app').dataset.pane = pane;
+    $$('#mobile-nav button').forEach(b => b.classList.toggle('active', b.dataset.pane === pane));
+  },
+  follow(pane) {
+    if (this.narrow.matches) this.show(pane);
+  },
 };
 
 const Layout = {
@@ -2491,6 +2510,7 @@ function keyboard() {
 }
 
 Theme.init();
+Mobile.init();
 Layout.init();
 Sidebar.init();
 Drawer.init();

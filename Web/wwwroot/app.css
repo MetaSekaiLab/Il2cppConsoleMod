@@ -206,7 +206,9 @@ kbd {
 .resizer { flex: none; background: var(--line); position: relative; z-index: 2; }
 .resizer.vertical { width: 1px; cursor: col-resize; }
 .resizer.horizontal { height: 1px; cursor: row-resize; }
-.resizer::after { content: ""; position: absolute; inset: -4px; }
+.resizer::after { content: ""; position: absolute; }
+.resizer.vertical::after { inset: 0 -4px; }
+.resizer.horizontal::after { inset: -4px 0; }
 .resizer:hover, .resizer.dragging { background: var(--accent); }
 body.dragging-col { cursor: col-resize; user-select: none; }
 body.dragging-row { cursor: row-resize; user-select: none; }
@@ -350,6 +352,7 @@ body.dragging-row { cursor: row-resize; user-select: none; }
 .v-row.flash { animation: flash 1s ease-out; }
 @keyframes flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
 .v-name { display: flex; align-items: center; gap: 4px; min-width: 0; padding-left: calc(var(--depth, 0) * 16px + 8px); white-space: nowrap; }
+.v-name:has(> .caret:not(.empty)) { cursor: pointer; }
 .v-name .caret { width: 16px; height: 16px; display: grid; place-items: center; color: var(--fg-3); flex: none; cursor: pointer; border-radius: 4px; }
 .v-name .caret:hover { color: var(--fg); background: var(--bg-3); }
 .v-name .caret .i { width: 11px; height: 11px; transition: transform .12s; }
@@ -620,7 +623,7 @@ body.dragging-row { cursor: row-resize; user-select: none; }
 
 .toasts { position: fixed; right: 16px; top: 56px; z-index: 70; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none; }
 .toast {
-  max-width: 420px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-2); box-shadow: var(--shadow);
+  max-width: min(420px, calc(100vw - 32px)); padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--bg-2); box-shadow: var(--shadow);
   color: var(--fg); font-size: 12.5px; pointer-events: auto; animation: toast-in .18s ease-out; word-break: break-word;
 }
 .toast.err { border-color: color-mix(in srgb, var(--err) 45%, var(--line-2)); }
@@ -640,4 +643,49 @@ body.dragging-row { cursor: row-resize; user-select: none; }
   .palette-trigger { width: auto; }
   .sidebar { --side-w: 240px; }
   .console-bar .hint { display: none; }
+}
+
+/* ---------- phones: one pane at a time, switched from a bottom bar ---------- */
+
+.mobile-nav { display: none; }
+
+@media (max-width: 720px) {
+  .brand-name, .resizer, #drawer-max, .console-bar .hint { display: none; }
+  .topbar { gap: 8px; padding: 0 8px 0 12px; }
+  .status { display: flex; }
+  .status .chip:not(#st-conn) { display: none; }
+
+  .workspace { position: relative; }
+  .sidebar, .main { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; }
+  .app:not([data-pane="side"]) .sidebar, .app[data-pane="side"] .main,
+  .app[data-pane="main"] .drawer, .app[data-pane="drawer"] .inspector { display: none; }
+  .app[data-pane="drawer"] .drawer { flex: 1; height: auto; }
+
+  .mobile-nav { display: flex; flex: none; border-top: 1px solid var(--line); background: var(--bg-1); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .mobile-nav button {
+    flex: 1; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border: 0; background: none; color: var(--fg-3); font-size: 11.5px;
+  }
+  .mobile-nav button.active { color: var(--accent); }
+  .mobile-nav .i { width: 20px; height: 20px; }
+
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .obj-head { padding: 12px 14px 10px; }
+  .obj-icon { display: none; }
+  .obj-sub, .obj-node { margin-left: 0; }
+  .v-row { grid-template-columns: minmax(96px, 42%) minmax(0, 1fr); }
+  .v-type { display: none; }
+  .welcome { padding: 28px 16px; }
+  .welcome-grid { grid-template-columns: minmax(0, 1fr); }
+  .console-bar .btn { font-size: 0; gap: 0; }
+  .completion { min-width: 0; max-width: none; left: 4px !important; right: 4px; }
+  .lg { grid-template-columns: 44px minmax(56px, 90px) minmax(0, 1fr); gap: 8px; padding: 1px 10px; }
+  .lg .tm { display: none; }
+}
+
+@media (pointer: coarse) {
+  :root { --row: 32px; }
+  .v-row { min-height: 32px; }
+  .cmp-item { height: 34px; }
+  .t-row .caret { width: 24px; height: 24px; }
 }
