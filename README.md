@@ -42,7 +42,7 @@ public static class Payload { public static object Execute() => 1 + 1; }
   - “方法”页可填参数直接调用（`$12` 传对象、留空使用默认值），返回值同样可以展开。
   - Sprite / Texture 有“预览”页（经 RenderTexture 读回，不可读纹理也能看），可下载 PNG。
   - 右上角 ⚡ 开启实时刷新（每秒），变化的值会闪烁提示。
-- **类型**：按程序集 / 命名空间浏览全部类型，或用名称、缩写（`RTS` → `RunTimeStorage`）搜索；打开后查看静态成员，`UnityEngine.Object` 子类还有“实例”页（`Resources.FindObjectsOfTypeAll`）。
+- **类型**：按程序集 / 命名空间浏览全部类型，或用名称、缩写（`SR` → `SpriteRenderer`）搜索；打开后查看静态成员，`UnityEngine.Object` 子类还有“实例”页（`Resources.FindObjectsOfTypeAll`）。
   - 静态**属性**默认不自动读取（单例的 `Instance` 之类 getter 可能会顺带创建对象），点击“读取”或“读取全部属性”；Il2Cpp 静态字段照常显示。`Renderer.material`、`UnityEngine.Random.value` 等有副作用的 getter 始终只在点击时读取。
 - **控制台**：与 `/script` 共用同一个会话。Enter 执行（代码不完整时换行），Shift+Enter 换行，↑↓ 翻历史；输入 `.` 或 Ctrl+Space 触发基于 Roslyn 语义模型的补全（认识会话变量）。结果以可展开的对象树显示。
   - `$12` 引用检查器里的对象句柄，会被替换成**带真实类型的引用**，因此可以直接写 `$12.SetActive(false)`、`$12.transform.position`；类型句柄代表类型本身（`$7.Instance`）；`$_` 是上一次执行或方法调用的结果。插值字符串的 `{}` 里不能直接写 `$12`，先赋给变量。
