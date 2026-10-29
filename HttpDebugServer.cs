@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -66,10 +67,39 @@ public sealed class HttpDebugServer : IDisposable
         _listener = listener;
         _cts = cts;
         _thread = thread;
-
-        _log.LogWarning($"Il2cppConsoleMod HTTP server listening on http://{_listenAddress}:{_port}/exec");
-        _log.LogWarning($"Il2cppConsoleMod web console: http://{DisplayHost()}:{_port}/ (paste the token above to sign in)");
     }
+
+    /// <summary>Addresses the server can be reached at; a wildcard listener lists loopback and LAN IPv4.</summary>
+    public IEnumerable<string> BaseUrls()
+    {
+        var hosts = new List<string>();
+        if (_listenAddress.Equals(IPAddress.Any) || _listenAddress.Equals(IPAddress.IPv6Any))
+        {
+            hosts.Add("127.0.0.1");
+            try
+            {
+                hosts.AddRange(NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(n => n.OperationalStatus != OperationalStatus.Down)
+                    .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                    .Select(a => a.Address)
+                    .Where(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))
+                    .Select(a => a.ToString())
+                    .Distinct());
+            }
+            catch
+            {
+                // interface enumeration is not available on every platform
+            }
+        }
+        else
+        {
+            hosts.Add(_listenAddress.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{_listenAddress}]" : _listenAddress.ToString());
+        }
+
+        return hosts.Select(h => $"http://{h}:{_port}");
+    }
+
+    public bool IsLoopbackOnly => IPAddress.IsLoopback(_listenAddress);
 
     public void Stop()
     {
@@ -321,9 +351,6 @@ public sealed class HttpDebugServer : IDisposable
             return null;
         }
     }
-
-    private string DisplayHost()
-        => _listenAddress.Equals(IPAddress.Any) || _listenAddress.Equals(IPAddress.IPv6Any) ? "127.0.0.1" : _listenAddress.ToString();
 
     private static HttpRequest? ReadHeaders(NetworkStream stream)
     {

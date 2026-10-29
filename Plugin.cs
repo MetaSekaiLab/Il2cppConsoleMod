@@ -4,6 +4,7 @@ using BepInEx.Unity.IL2CPP;
 using Il2cppConsoleMod.Inspector;
 using Il2cppConsoleMod.Web;
 using Il2CppInterop.Runtime.Injection;
+using UnityEngine;
 
 namespace Il2cppConsoleMod;
 
@@ -70,6 +71,11 @@ public class Plugin : BasePlugin
             var api = new WebApi(_session, new UnityGameHost(), _logs);
             _server = new HttpDebugServer(listenAddress.Value, port.Value, token, Log, _session, api);
             _server.Start();
+
+            foreach (var url in _server.BaseUrls())
+                Log.LogWarning($"Il2cppConsoleMod web console: {url}/#token={token}");
+            if (_server.IsLoopbackOnly && Application.platform == RuntimePlatform.Android)
+                Log.LogWarning($"Il2cppConsoleMod: on the PC run `adb forward tcp:{port.Value} tcp:{port.Value}` to open the link above");
         }
         catch (Exception ex)
         {
