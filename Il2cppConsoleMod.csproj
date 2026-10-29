@@ -8,7 +8,7 @@
 
     <AssemblyName>Il2cppConsoleMod</AssemblyName>
     <RootNamespace>Il2cppConsoleMod</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
 
     <OutputPath>$(BepInExDir)/plugins</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
