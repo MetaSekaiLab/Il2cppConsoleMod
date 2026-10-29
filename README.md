@@ -31,31 +31,20 @@ public static class Payload { public static object Execute() => 1 + 1; }
 
 ## Web 控制台
 
-浏览器打开 `http://127.0.0.1:18765/`，输入日志里的 token 即可（也可以直接打开 `http://127.0.0.1:18765/#token=<token>` 免输入，token 会立即从地址栏移除）。页面随 DLL 内嵌、不依赖外网；静态页面本身不含任何数据，所有 `/api/*` 请求同样需要 token。
+浏览器打开 `http://127.0.0.1:18765/`，输入日志里的 token（或打开 `/#token=<token>`，token 会立即从地址栏移除）。页面随 DLL 内嵌，所有 `/api/*` 请求同样需要 token。
 
-- **场景**：按场景列出 GameObject 层级（含 DontDestroyOnLoad），按名称跨场景搜索，右键收藏 / 在控制台引用 / 切换激活。
-- **检查器**：像浏览器开发者工具一样逐层展开字段，支持后退 / 前进与面包屑。
-  - GameObject 以 Unity Inspector 式的组件卡片展示，可勾选 `enabled`、开关 `SetActive`，显示路径、Layer、Tag。
-  - 成员按声明类型分组；橙点为 Il2Cpp 字段（Il2CppInterop 以属性形式暴露），空心圆为属性。值会解析到真实的运行时类型（`Component` 会显示为 `SpriteRenderer` 等），装箱的 Il2Cpp 基础类型 / 字符串 / 结构体会自动拆箱。
-  - 集合（托管集合、`Il2CppArrayBase`、Il2Cpp `List` / `Dictionary` / `HashSet`、`Transform` 子节点等）分页展示元素。
-  - 双击值可编辑基础类型、字符串、枚举（含 Flags）、向量与颜色；布尔值直接勾选。
-  - “方法”页可填参数直接调用（`$12` 传对象、留空使用默认值），返回值同样可以展开。
-  - Sprite / Texture 有“预览”页（经 RenderTexture 读回，不可读纹理也能看），可下载 PNG。
-  - 右上角 ⚡ 开启实时刷新（每秒），变化的值会闪烁提示。
-- **类型**：按程序集 / 命名空间浏览全部类型，或用名称、缩写（`SR` → `SpriteRenderer`）搜索；打开后查看静态成员，`UnityEngine.Object` 子类还有“实例”页（`Resources.FindObjectsOfTypeAll`）。
-  - 静态**属性**默认不自动读取（单例的 `Instance` 之类 getter 可能会顺带创建对象），点击“读取”或“读取全部属性”；Il2Cpp 静态字段照常显示。`Renderer.material`、`UnityEngine.Random.value` 等有副作用的 getter 始终只在点击时读取。
-- **控制台**：与 `/script` 共用同一个会话。Enter 执行（代码不完整时换行），Shift+Enter 换行，↑↓ 翻历史；输入 `.` 或 Ctrl+Space 触发基于 Roslyn 语义模型的补全（认识会话变量）。结果以可展开的对象树显示。
-  - `$12` 引用检查器里的对象句柄，会被替换成**带真实类型的引用**，因此可以直接写 `$12.SetActive(false)`、`$12.transform.position`；类型句柄代表类型本身（`$7.Instance`）；`$_` 是上一次执行或方法调用的结果。插值字符串的 `{}` 里不能直接写 `$12`，先赋给变量。
-  - “程序”模式等价于 `/exec`（完整 `Payload` 程序，每次独立编译）。
-- **会话**：收藏对象、监视表达式（每秒求值；独立编译，可用静态成员和 `$句柄`，不能用控制台变量）、控制台变量列表。
-- **日志**：实时显示 BepInEx 日志（含 Unity 日志），按级别 / 来源 / 文本过滤，可打开完整 `LogOutput.log`。
-- Ctrl+K 打开命令面板：搜索类型、GameObject 和命令。
+- **场景**：GameObject 层级（含 DontDestroyOnLoad）、跨场景搜索、切换激活。
+- **检查器**：逐层展开字段，值解析到真实运行时类型；组件卡片、集合分页、双击编辑、调用方法、贴图预览、实时刷新。橙点为 Il2Cpp 字段。
+- **类型**：按程序集浏览或搜索（支持首字母缩写），查看静态成员与实例。静态属性和有副作用的 getter 只在点击时读取。
+- **控制台**：与 `/script` 共用会话，Roslyn 补全；`$n` 引用检查器里的对象（带真实类型），`$_` 是上次结果。“程序”模式等价于 `/exec`。
+- **会话**：收藏、监视表达式、控制台变量。**日志**：实时 BepInEx 日志。Ctrl+K 命令面板。
 
-注意：
+读取游戏对象的请求在 Unity 主线程执行，游戏加载或暂停时会等待；C# 代码在 HTTP 线程编译，只有执行切到主线程。
 
-- 读取游戏对象的请求都在 Unity 主线程执行。游戏在加载、或在后台被暂停（游戏设置里没开“后台运行”，而浏览器在同一台电脑上抢走了焦点）时，请求会等待，页面右上角显示“主线程无响应”。类型浏览、补全、方法列表和日志不依赖主线程。
-- C# 代码（控制台、`/script`、`/exec`）在 HTTP 线程编译，只有执行切到主线程，编译耗时不会卡住游戏帧。
-- 对象句柄会让对应对象保持存活（上限 20000 个，按最近使用淘汰）；命令面板里可“清空对象句柄”。游戏重启后旧句柄全部失效，页面会自动提示。
+## Android
+
+- 电脑上执行 `adb forward tcp:18765 tcp:18765` 后照常打开 `http://127.0.0.1:18765/`；或把 `ListenAddress` 设为 `0.0.0.0` 从局域网访问。
+- 如果注入的 MonoBehaviour 收不到 `Update`（请求一直“主线程无响应”），在配置里打开 `[Compatibility] UseNativeUpdateHook = true`，改用 Dobby 挂钩 `EventSystem.Update`（需要场景里有 EventSystem）。
 
 ## 读取 BepInEx 日志（/logcat）
 

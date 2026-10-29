@@ -108,6 +108,10 @@ public static class Il2CppSupport
         }
     }
 
+    /// <summary>True for a Unity object whose native side is gone (scene unloaded, Destroy).</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool IsDestroyed(object obj) => obj is UnityEngine.Object o && o == null;
+
     /// <summary>Il2Cpp-side full type name, for display when no managed type is available.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static string? NativeTypeName(Il2CppObjectBase obj)

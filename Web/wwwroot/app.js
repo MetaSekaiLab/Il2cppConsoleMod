@@ -148,6 +148,7 @@ const API = {
 function describeError(e) {
   if (e?.code === 'main-thread-timeout') return '游戏主线程没有响应：可能正在加载，或游戏在后台被暂停（可在游戏设置中开启“后台运行”）';
   if (e?.code === 'expired') return '对象句柄已过期，请重新获取';
+  if (e?.code === 'destroyed') return '对象已被销毁（可能切换了场景）';
   if (e?.code === 'offline') return '无法连接到游戏';
   return e?.message || String(e);
 }
@@ -334,7 +335,7 @@ class VTree {
     if (m.lazy) {
       cell.append(h('button', {
         class: 'link-btn', type: 'button',
-        text: m.lazyHint ? '读取（有副作用，例如创建副本）' : '读取',
+        text: m.lazyHint ? '读取（有副作用）' : '读取',
         title: m.lazyHint ? '这个属性的 getter 会改变状态（创建材质 / 网格副本、推进随机数等），只在点击时读取' : '静态属性默认不自动读取：单例的 Instance 等 getter 可能会顺带创建对象',
         onclick: async () => {
           try {
@@ -763,7 +764,7 @@ const Inspector = {
       await this.renderPane(true);
     } catch (e) {
       if (!quiet) fail(e);
-      else if (e.code === 'expired') this.setLive(false);
+      else if (e.code === 'expired' || e.code === 'destroyed') this.setLive(false);
     } finally {
       this.refreshing = false;
     }
@@ -774,7 +775,7 @@ const Inspector = {
     const isGo = d.facets.includes('gameobject');
     const isComp = d.facets.includes('component');
     const ic = d.isStatic ? 'braces' : isGo ? 'cube' : isComp ? 'package' : d.facets.includes('items') ? 'list' : d.facets.includes('preview') ? 'image' : d.value.k === 'struct' ? 'box' : 'cube';
-    const kindLabel = d.isStatic ? (d.type.kind === 'static' ? 'static class' : `static ${d.type.kind}`) : isGo ? 'GameObject' : isComp ? 'Component' : d.type.kind;
+    const kindLabel = d.isStatic ? (d.type.kind === 'static' ? 'static class' : d.type.kind) : isGo ? 'GameObject' : isComp ? 'Component' : d.type.kind;
 
     const sub = h('div', { class: 'obj-sub' });
     const typeLink = h('span', { class: 'type-link mono', text: d.type.full, title: d.isStatic ? d.type.full : '查看此类型的静态成员' });
@@ -1101,7 +1102,7 @@ function tabsFor(d) {
 
 function defaultTab(d) {
   if (d.facets?.includes('gameobject')) return 'components';
-  if (d.facets?.includes('items')) return 'items';
+  if (d.facets?.includes('items') && !d.node) return 'items';
   return 'members';
 }
 
@@ -1697,39 +1698,15 @@ function isComplete(code) {
   return !(last && ',.+-*/%=&|^!?<>(:'.includes(last));
 }
 
-const PROGRAM_TEMPLATE = `using System;
-using UnityEngine;
+const PROGRAM_TEMPLATE = `using UnityEngine;
 
 public static class Payload
 {
     public static object Execute()
     {
-        return Application.productName;
+        return null;
     }
 }`;
-
-const BUILTIN_SNIPPETS = [
-  { name: '查找 GameObject', code: 'GameObject.Find("Main Camera")' },
-  { name: '按类型查找所有对象', code: 'Resources.FindObjectsOfTypeAll(Il2CppInterop.Runtime.Il2CppType.Of<Camera>())' },
-  { name: '当前场景根对象', code: 'UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects()' },
-  { name: '时间缩放', code: 'Time.timeScale = 1f;' },
-  { name: '写日志', code: 'BepInEx.Logging.Logger.CreateLogSource("Console").LogInfo("hello from console");' },
-  {
-    name: 'Harmony 补丁模板',
-    code: `using HarmonyLib;
-
-[HarmonyPatch(typeof(SomeType), nameof(SomeType.SomeMethod))]
-public static class DemoHook
-{
-    public static int Hits;
-    [HarmonyPrefix]
-    public static bool Prefix() { Hits++; return true; }
-}
-
-var hook = new Harmony("Console.DemoHook");
-hook.PatchAll(typeof(DemoHook).Assembly);`,
-  },
-];
 
 const Console = {
   input: null,
@@ -2029,12 +2006,8 @@ const Console = {
 
   snippetsMenu(e) {
     const saved = store.get('snippets', []);
-    const items = BUILTIN_SNIPPETS.map(s => ({ icon: 'code', label: s.name, run: () => { this.set(s.code); this.focus(); } }));
-    if (saved.length) {
-      items.push('-');
-      for (const s of saved) items.push({ icon: 'bookmark', label: s.name, sub: '右键删除', run: () => { this.set(s.code); this.focus(); } });
-    }
-    items.push('-');
+    const items = saved.map(s => ({ icon: 'bookmark', label: s.name, run: () => { this.set(s.code); this.focus(); } }));
+    if (items.length) items.push('-');
     items.push({ icon: 'plus', label: '把当前代码存为片段', run: () => {
       const code = this.input.value.trim();
       if (!code) { toast('编辑器是空的'); return; }
@@ -2043,7 +2016,7 @@ const Console = {
       store.set('snippets', [...saved.filter(s => s.name !== name), { name, code }]);
       toast('已保存片段', 'ok');
     } });
-    if (saved.length) items.push({ icon: 'trash', label: '删除已保存的片段…', run: () => {
+    if (saved.length) items.push({ icon: 'trash', label: '删除片段…', run: () => {
       const name = prompt('要删除的片段名称：\n' + saved.map(s => s.name).join('\n'));
       if (name) store.set('snippets', saved.filter(s => s.name !== name));
     } });

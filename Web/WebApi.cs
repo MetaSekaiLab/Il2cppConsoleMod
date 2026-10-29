@@ -83,44 +83,46 @@ internal sealed class WebApi
                 status["boot"] = BootId;
                 status["mod"] = MyPluginInfo.PLUGIN_VERSION;
                 status["handles"] = ObjectRegistry.Count;
+                status["managedMb"] = GC.GetTotalMemory(false) / 1048576.0;
+                status["workingSetMb"] = Environment.WorkingSet / 1048576.0;
                 return status;
             }
             case "/api/scenes" when get:
                 return Main(() => _host.Scenes());
             case "/api/children" when get:
-                return Main(() => _host.Children(Target(QInt(q, "h"))));
+                return Main(() => _host.Children(Alive(QInt(q, "h"))));
             case "/api/components" when get:
-                return Main(() => _host.Components(Target(QInt(q, "h"))));
+                return Main(() => _host.Components(Alive(QInt(q, "h"))));
             case "/api/nodes/search" when get:
                 return Main(() => _host.SearchNodes(QStr(q, "q"), QInt(q, "limit", 200)));
             case "/api/active" when post:
                 return Main(() =>
                 {
-                    _host.SetActive(Target(Int(body, "h")), Bool(body, "active"));
-                    return _host.NodeInfo(Target(Int(body, "h")));
+                    _host.SetActive(Alive(Int(body, "h")), Bool(body, "active"));
+                    return _host.NodeInfo(Alive(Int(body, "h")));
                 });
             case "/api/enabled" when post:
                 return Main(() =>
                 {
-                    _host.SetEnabled(Target(Int(body, "h")), Bool(body, "enabled"));
+                    _host.SetEnabled(Alive(Int(body, "h")), Bool(body, "enabled"));
                     return new { ok = true };
                 });
             case "/api/preview" when get:
-                return Main(() => _host.Preview(Target(QInt(q, "h")), Math.Clamp(QInt(q, "max", 1024), 16, 4096)));
+                return Main(() => _host.Preview(Alive(QInt(q, "h")), Math.Clamp(QInt(q, "max", 1024), 16, 4096)));
 
             // ---- objects ------------------------------------------------------------------
             case "/api/inspect" when get:
                 return Main(() => Inspect(QInt(q, "h"), q.TryGetValue("all", out var all) && all == "1"));
             case "/api/member" when get:
-                return Main(() => ObjectInspector.GetMember(Target(QInt(q, "h")), QStr(q, "name")));
+                return Main(() => ObjectInspector.GetMember(Alive(QInt(q, "h")), QStr(q, "name")));
             case "/api/items" when get:
-                return Main(() => ObjectInspector.GetItems(Target(QInt(q, "h")), QInt(q, "offset", 0), QInt(q, "limit", 100)));
+                return Main(() => ObjectInspector.GetItems(Alive(QInt(q, "h")), QInt(q, "offset", 0), QInt(q, "limit", 100)));
             case "/api/methods" when get:
                 return ObjectInspector.GetMethods(Target(QInt(q, "h")));
             case "/api/text" when get:
                 return new { text = Target(QInt(q, "h")) as string ?? throw new ApiError(400, "not a string handle") };
             case "/api/set" when post:
-                return Main(() => ObjectInspector.SetMember(Target(Int(body, "h")), Str(body, "name"), Prop(body, "value")));
+                return Main(() => ObjectInspector.SetMember(Alive(Int(body, "h")), Str(body, "name"), Prop(body, "value")));
             case "/api/invoke" when post:
                 return Main(() => Invoke(body));
             case "/api/find" when get:
@@ -174,7 +176,7 @@ internal sealed class WebApi
 
     private object Inspect(int h, bool readStaticProperties)
     {
-        var target = Target(h);
+        var target = Alive(h);
         if (target is string text)
             return new { h, text, value = ValueDescriber.Describe(text) };
 
@@ -262,7 +264,7 @@ internal sealed class WebApi
 
     private object Invoke(JsonElement body)
     {
-        var target = Target(Int(body, "h"));
+        var target = Alive(Int(body, "h"));
         var args = body.TryGetProperty("args", out var a) && a.ValueKind == JsonValueKind.Array
             ? a.EnumerateArray().ToArray()
             : Array.Empty<JsonElement>();
@@ -363,6 +365,13 @@ internal sealed class WebApi
 
     private static object Target(int h)
         => ObjectRegistry.TryGet(h, out var value) ? value : throw new ApiError(410, $"handle ${h} has expired", "expired");
+
+    /// <summary>Target that is still a live Unity object; main thread only.</summary>
+    private static object Alive(int h)
+    {
+        var target = Target(h);
+        return Il2CppSupport.IsDestroyed(target) ? throw new ApiError(410, $"${h} has been destroyed", "destroyed") : target;
+    }
 
     private static void Write(Stream stream, int status, object? value)
         => HttpResponse.Json(stream, status, JsonSerializer.Serialize(value, JsonOptions));

@@ -76,8 +76,8 @@ public static class TypeCatalog
     }
 
     /// <summary>
-    /// Ranked search: exact name, then prefix, then substring, then subsequence
-    /// (so <c>SR</c> finds <c>SpriteRenderer</c>). Game assemblies sort first.
+    /// Ranked name search: exact, prefix, word-start initials, substring, subsequence.
+    /// Game assemblies sort first.
     /// </summary>
     public static List<TypeEntry> Search(string query, int limit)
     {
@@ -126,7 +126,7 @@ public static class TypeCatalog
         return IsSubsequence(name, query) ? 30 : 0;
     }
 
-    /// <summary>Query letters hit word starts in order: "SR" → SpriteRenderer.</summary>
+    /// <summary>Query letters hit word starts in order.</summary>
     private static bool IsHumpMatch(string name, string query)
     {
         var q = 0;

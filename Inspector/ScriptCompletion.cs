@@ -118,7 +118,7 @@ public static class ScriptCompletion
         if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // camel humps: "gc" → GetComponent
+        // camel humps
         var p = 0;
         for (var i = 0; i < name.Length && p < prefix.Length; i++)
         {

@@ -57,7 +57,7 @@
           <div class="side-toolbar">
             <label class="search">
               <svg class="i"><use href="#i-search"/></svg>
-              <input id="type-filter" type="search" placeholder="类型名，支持缩写如 SR → SpriteRenderer" spellcheck="false">
+              <input id="type-filter" type="search" placeholder="搜索类型" spellcheck="false">
             </label>
           </div>
           <div class="tree scroll" id="type-tree" tabindex="0"></div>
@@ -75,7 +75,7 @@
                 <label class="toggle-mini" title="每秒刷新"><input type="checkbox" id="watch-live" checked><span>实时</span></label>
               </div>
               <form id="watch-form" class="watch-form" autocomplete="off">
-                <input id="watch-input" class="mono" placeholder="Time.time，或 $12.name" spellcheck="false">
+                <input id="watch-input" class="mono" placeholder="C# 表达式" spellcheck="false">
               </form>
               <div id="watches" class="list"></div>
             </div>
@@ -129,7 +129,7 @@
               </div>
               <div class="editor" id="editor">
                 <pre class="editor-hl mono" aria-hidden="true"><code id="editor-hl"></code></pre>
-                <textarea id="editor-input" class="editor-input mono" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="输入 C#，例如 GameObject.Find(&quot;Main Camera&quot;)"></textarea>
+                <textarea id="editor-input" class="editor-input mono" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="输入 C#"></textarea>
                 <div class="completion" id="completion" hidden></div>
                 <button class="run-btn" id="console-run" type="button" title="执行 (Enter / Ctrl+Enter)"><svg class="i"><use href="#i-play"/></svg></button>
               </div>

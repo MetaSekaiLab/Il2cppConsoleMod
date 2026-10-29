@@ -3,9 +3,8 @@ using System.Text;
 namespace Il2cppConsoleMod.Inspector;
 
 /// <summary>
-/// Rewrites <c>$12</c> (an inspector handle) and <c>$_</c> (last console result) in console
-/// code into typed registry lookups, e.g. <c>((global::UnityEngine.GameObject)…Get(12))</c>,
-/// so members can be used directly: <c>$12.SetActive(false)</c>.
+/// Rewrites <c>$n</c> (an inspector handle) and <c>$_</c> (last console result) in console
+/// code into registry lookups cast to the object's runtime type, so its members can be used directly.
 ///
 /// Strings, chars and comments are skipped. Holes inside interpolated strings are not
 /// rewritten; assign the handle to a variable first.

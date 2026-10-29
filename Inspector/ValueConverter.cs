@@ -119,7 +119,7 @@ public static class ValueConverter
         if (target.IsInstanceOfType(value))
             return value;
 
-        // Same native object, different wrapper (e.g. Component handle → SpriteRenderer parameter).
+        // Same native object, different wrapper type.
         if (value is Il2CppObjectBase native && typeof(Il2CppObjectBase).IsAssignableFrom(target))
             return Il2CppSupport.Wrap(target, native.Pointer);
 
